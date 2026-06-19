@@ -244,7 +244,7 @@ func (c *APIClient) DeleteDocument(id string) (map[string]any, error) {
 
 // MoveDocument calls PATCH /documents/{id}/move.
 func (c *APIClient) MoveDocument(id, targetCollectionSlug string) (map[string]any, error) {
-	return c.patch("/documents/"+id+"/move", map[string]any{"collection_slug": targetCollectionSlug})
+	return c.patch("/documents/"+id+"/move", map[string]any{"target_slug": targetCollectionSlug})
 }
 
 // ScrapeURL calls POST /documents/scrape.
