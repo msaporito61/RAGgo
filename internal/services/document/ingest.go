@@ -98,7 +98,7 @@ func (s *IngestService) Ingest(ctx context.Context, owner string, collectionID i
 		}
 		for j, vec := range vecs {
 			points = append(points, Point{
-				ID:     fmt.Sprintf("%s_%d", docID, i+j),
+				ID:     uuid.NewSHA1(uuid.NameSpaceOID, []byte(fmt.Sprintf("%s:%d", docID, i+j))).String(),
 				Vector: vec,
 				Payload: map[string]string{
 					"document_id": docID,
