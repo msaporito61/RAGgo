@@ -3,8 +3,8 @@ package handlers
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"raggo/internal/database"
 	"raggo/internal/middleware"
@@ -21,28 +21,25 @@ type SearchHandler struct {
 
 func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	c := middleware.ClaimsFromCtx(r.Context())
-	var req struct {
-		Query          string `json:"query"`
-		Limit          int    `json:"limit"`
-		CollectionSlug string `json:"collection_slug"`
-		UseHybrid      *bool  `json:"use_hybrid"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Query == "" {
+
+	query := r.URL.Query().Get("q")
+	if query == "" {
 		writeJSON(w, http.StatusBadRequest, errResp("query required"))
 		return
 	}
-	if req.Limit <= 0 || req.Limit > 100 {
-		req.Limit = 10
+	limit := 10
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
 	}
+	collectionSlug := r.URL.Query().Get("collection_slug")
 	useHybrid := true
-	if req.UseHybrid != nil {
-		useHybrid = *req.UseHybrid
-	}
 
 	// resolve collection
 	qdrantName := ""
-	if req.CollectionSlug != "" {
-		col, err := database.GetCollection(h.DB, c.Username, req.CollectionSlug)
+	if collectionSlug != "" {
+		col, err := database.GetCollection(h.DB, c.Username, collectionSlug)
 		if err != nil {
 			writeJSON(w, http.StatusNotFound, errResp("collection not found"))
 			return
@@ -57,14 +54,14 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 		qdrantName = col.QdrantName
 	}
 
-	results, err := h.SearchSvc.Search(r.Context(), req.Query, qdrantName, req.Limit, useHybrid)
+	results, err := h.SearchSvc.Search(r.Context(), query, qdrantName, limit, useHybrid)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errResp(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"data":  results,
-		"query": req.Query,
+		"query": query,
 		"total": len(results),
 	})
 }

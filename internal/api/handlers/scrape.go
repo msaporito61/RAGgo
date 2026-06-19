@@ -9,12 +9,34 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"raggo/internal/database"
 	"raggo/internal/middleware"
 	"raggo/internal/services/collection"
 	"raggo/internal/services/document"
 )
+
+// privateCIDRs is the list of private/internal CIDR blocks used for SSRF protection.
+// Initialized once at package load to avoid rebuilding on every request.
+var privateCIDRs []*net.IPNet
+
+func init() {
+	blocks := []string{
+		"127.0.0.0/8",
+		"10.0.0.0/8",
+		"172.16.0.0/12",
+		"192.168.0.0/16",
+		"169.254.0.0/16",
+		"::1/128",
+	}
+	for _, cidr := range blocks {
+		_, network, err := net.ParseCIDR(cidr)
+		if err == nil {
+			privateCIDRs = append(privateCIDRs, network)
+		}
+	}
+}
 
 type ScrapeHandler struct {
 	IngestSvc *document.IngestService
@@ -83,10 +105,8 @@ func validateURL(rawURL string) error {
 		if ip == nil {
 			continue
 		}
-		private := []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "::1/128"}
-		for _, cidr := range private {
-			_, network, _ := net.ParseCIDR(cidr)
-			if network != nil && network.Contains(ip) {
+		for _, network := range privateCIDRs {
+			if network.Contains(ip) {
 				return fmt.Errorf("URL resolves to private/internal address")
 			}
 		}
@@ -100,7 +120,8 @@ func fetchURL(ctx context.Context, rawURL string) (string, error) {
 		return "", err
 	}
 	req.Header.Set("User-Agent", "RAGgo/1.0")
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}

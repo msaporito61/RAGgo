@@ -60,6 +60,22 @@ func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *AdminHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
+	username := chi.URLParam(r, "username")
+	var req struct {
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Password == "" {
+		writeJSON(w, http.StatusBadRequest, errResp("password required"))
+		return
+	}
+	if err := h.UserSvc.SetPassword(username, req.Password); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errResp(err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"message": "password updated"})
+}
+
 func (h *AdminHandler) SetAPIKey(w http.ResponseWriter, r *http.Request) {
 	c := middleware.ClaimsFromCtx(r.Context())
 	var req struct {

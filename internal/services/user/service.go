@@ -98,3 +98,11 @@ func (s *Service) SetAPIKey(username, plainKey string) error {
 	}
 	return database.UpdateUserAPIKeyHash(s.DB, username, string(hash))
 }
+
+func (s *Service) SetPassword(username, newPassword string) error {
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	return database.UpdateUserPasswordHash(s.DB, username, string(hash))
+}

@@ -89,7 +89,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) http.Handler {
 		r.Post("/documents/scrape", scrapeH.Scrape)
 
 		// Search
-		r.Post("/search", srchH.Search)
+		r.Get("/search", srchH.Search)
 
 		// Chat session routes
 		r.Post("/chat/sessions", chatH.CreateSession)
@@ -108,6 +108,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) http.Handler {
 			r.Get("/admin/users", adminH.ListUsers)
 			r.Post("/admin/users", adminH.CreateUser)
 			r.Delete("/admin/users/{username}", adminH.DeleteUser)
+			r.Put("/admin/users/{username}/password", adminH.SetPassword)
 		})
 	})
 
