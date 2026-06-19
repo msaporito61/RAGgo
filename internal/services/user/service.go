@@ -52,6 +52,9 @@ func (s *Service) Login(username, password string) (access, refresh string, err 
 
 func (s *Service) RefreshToken(refreshTok string) (string, error) {
 	tok, err := jwt.Parse(refreshTok, func(t *jwt.Token) (any, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
 		return []byte(s.Cfg.SecretKey), nil
 	})
 	if err != nil || !tok.Valid {
