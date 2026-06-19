@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -47,46 +48,46 @@ func New(db *sql.DB, searcher MultiSearcher, llmBaseURL, llmAPIKey, llmModel str
 	}
 }
 
-func (s *Service) Chat(ctx context.Context, req ChatRequest) (string, []search.Result, error) {
+func (s *Service) Chat(ctx context.Context, req ChatRequest) (resolvedSessionID string, answer string, results []search.Result, err error) {
 	sessionID, err := s.ensureSession(req.SessionID, req.Username)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 
-	results, err := s.Searcher.SearchMulti(ctx, req.Message, req.QdrantNames, 5, req.UseHybrid)
+	results, err = s.Searcher.SearchMulti(ctx, req.Message, req.QdrantNames, 5, req.UseHybrid)
 	if err != nil {
-		return "", nil, fmt.Errorf("search: %w", err)
+		return "", "", nil, fmt.Errorf("search: %w", err)
 	}
 
 	docsIndex := s.buildDocumentIndex(ctx, req.Username)
 	history, _ := database.GetSessionMessages(s.DB, sessionID, 20)
 	prompt := s.buildPrompt(req.Message, results, docsIndex, history)
 
-	answer, err := s.callLLM(ctx, prompt, false, nil)
+	answer, err = s.callLLM(ctx, prompt, false, nil)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
 
 	_ = database.AppendChatMessage(s.DB, sessionID, "user", req.Message)
 	_ = database.AppendChatMessage(s.DB, sessionID, "assistant", answer)
 
-	return answer, results, nil
+	return sessionID, answer, results, nil
 }
 
-func (s *Service) ChatStream(ctx context.Context, req ChatRequest, w http.ResponseWriter) error {
+func (s *Service) ChatStream(ctx context.Context, req ChatRequest, w http.ResponseWriter) (string, error) {
 	sessionID, err := s.ensureSession(req.SessionID, req.Username)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	results, err := s.Searcher.SearchMulti(ctx, req.Message, req.QdrantNames, 5, req.UseHybrid)
+	streamResults, err := s.Searcher.SearchMulti(ctx, req.Message, req.QdrantNames, 5, req.UseHybrid)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	docsIndex := s.buildDocumentIndex(ctx, req.Username)
 	history, _ := database.GetSessionMessages(s.DB, sessionID, 20)
-	prompt := s.buildPrompt(req.Message, results, docsIndex, history)
+	prompt := s.buildPrompt(req.Message, streamResults, docsIndex, history)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -101,7 +102,7 @@ func (s *Service) ChatStream(ctx context.Context, req ChatRequest, w http.Respon
 		}
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	fmt.Fprintf(w, "data: [DONE]\n\n")
 	if f, ok := w.(http.Flusher); ok {
@@ -110,7 +111,7 @@ func (s *Service) ChatStream(ctx context.Context, req ChatRequest, w http.Respon
 
 	_ = database.AppendChatMessage(s.DB, sessionID, "user", req.Message)
 	_ = database.AppendChatMessage(s.DB, sessionID, "assistant", fullAnswer.String())
-	return nil
+	return sessionID, nil
 }
 
 func (s *Service) ensureSession(id, username string) (string, error) {
@@ -118,10 +119,18 @@ func (s *Service) ensureSession(id, username string) (string, error) {
 }
 
 // EnsureSession returns an existing session ID or creates a new one.
+// If id is non-empty, it verifies that the session belongs to username before returning it.
 func (s *Service) EnsureSession(id, username string) (string, error) {
 	if id == "" {
 		id = uuid.NewString()
 		return id, database.CreateChatSession(s.DB, id, username)
+	}
+	sess, err := database.GetChatSession(s.DB, id)
+	if err != nil {
+		return "", errors.New("session not found or access denied")
+	}
+	if sess.Username != username {
+		return "", errors.New("session not found or access denied")
 	}
 	return id, nil
 }

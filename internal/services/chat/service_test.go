@@ -52,7 +52,7 @@ func TestChat_ReturnsAnswer(t *testing.T) {
 	}
 
 	req := ChatRequest{Message: "what is the answer?", Username: "alice", QdrantNames: []string{"rag_alice_default"}}
-	answer, _, err := svc.Chat(context.Background(), req)
+	_, answer, _, err := svc.Chat(context.Background(), req)
 	if err != nil {
 		t.Fatalf("chat: %v", err)
 	}

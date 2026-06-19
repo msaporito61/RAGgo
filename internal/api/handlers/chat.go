@@ -55,9 +55,9 @@ func (h *ChatHandler) DeleteSession(w http.ResponseWriter, r *http.Request) {
 	c := middleware.ClaimsFromCtx(r.Context())
 	sessionID := chi.URLParam(r, "sessionID")
 
-	// Verify ownership
+	// Verify ownership (admins may delete any session)
 	sess, err := database.GetChatSession(h.DB, sessionID)
-	if err != nil || sess.Username != c.Username {
+	if err != nil || (sess.Username != c.Username && c.Role != "admin") {
 		writeJSON(w, http.StatusNotFound, errResp("session not found"))
 		return
 	}
@@ -79,13 +79,13 @@ func (h *ChatHandler) Chat(w http.ResponseWriter, r *http.Request) {
 	}
 	req.QdrantNames = qdrantNames
 
-	answer, results, err := h.ChatSvc.Chat(r.Context(), *req)
+	resolvedSessionID, answer, results, err := h.ChatSvc.Chat(r.Context(), *req)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errResp(err.Error()))
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"session_id": req.SessionID,
+		"session_id": resolvedSessionID,
 		"answer":     answer,
 		"sources":    results,
 	})
@@ -101,7 +101,7 @@ func (h *ChatHandler) ChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	req.QdrantNames = qdrantNames
 
-	if err := h.ChatSvc.ChatStream(r.Context(), *req, w); err != nil {
+	if _, err := h.ChatSvc.ChatStream(r.Context(), *req, w); err != nil {
 		// headers likely already written; best effort log via stderr would go here
 		return
 	}
