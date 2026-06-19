@@ -52,6 +52,10 @@ func (h *DocumentHandler) Upload(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		if col == nil {
+			writeJSON(w, http.StatusNotFound, errResp("collection not found"))
+			return
+		}
 	}
 	if col == nil {
 		col, err = h.CollSvc.GetOrCreateDefault(r.Context(), c.Username)
@@ -140,6 +144,10 @@ func (h *DocumentHandler) Move(w http.ResponseWriter, r *http.Request) {
 	srcMeta, err := database.GetDocumentMeta(h.IngestSvc.DB, docID)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, errResp("document not found"))
+		return
+	}
+	if srcMeta.OwnerUsername != c.Username && c.Role != "admin" {
+		writeJSON(w, http.StatusForbidden, errResp("forbidden"))
 		return
 	}
 	srcCol, err := database.GetCollectionByID(h.IngestSvc.DB, srcMeta.CollectionID)

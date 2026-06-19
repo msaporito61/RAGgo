@@ -59,7 +59,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) http.Handler {
 	docH := &handlers.DocumentHandler{
 		IngestSvc: ingestSvc,
 		CollSvc:   collSvc,
-		MaxUpload: 32 << 20, // 32 MB
+		MaxUpload: 50 << 20, // 50 MB
 	}
 
 	// Public routes

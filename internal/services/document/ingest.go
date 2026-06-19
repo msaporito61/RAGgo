@@ -125,13 +125,14 @@ func (s *IngestService) Ingest(ctx context.Context, owner string, collectionID i
 
 // Delete removes a document's vectors and its metadata record.
 func (s *IngestService) Delete(ctx context.Context, docID, qdrantName string) error {
+	meta, err := database.GetDocumentMeta(s.DB, docID)
+	if err != nil {
+		return fmt.Errorf("document not found: %w", err)
+	}
 	if err := s.VS.DeleteByDocumentID(ctx, qdrantName, docID); err != nil {
 		return err
 	}
-	meta, err := database.GetDocumentMeta(s.DB, docID)
-	if err == nil {
-		_ = database.IncrementDocumentCount(s.DB, meta.CollectionID, -1)
-	}
+	_ = database.IncrementDocumentCount(s.DB, meta.CollectionID, -1)
 	return database.DeleteDocumentMeta(s.DB, docID)
 }
 
