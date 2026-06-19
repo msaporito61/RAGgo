@@ -57,6 +57,7 @@ export function Chat() {
         activeSessionId!,
         userMsg.content,
         selectedCols.length > 0 ? selectedCols : undefined,
+        'stream',
       )
 
       if (!res.ok) {

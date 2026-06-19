@@ -140,9 +140,9 @@ export const chat = {
       method: 'POST',
       body: JSON.stringify({ message, collection_slugs: collectionSlugs }),
     }),
-  // Returns a raw Response for SSE parsing
-  streamMessage: (sessionId: string, message: string, collectionSlugs?: string[]) =>
-    fetch(`/api/chat/sessions/${sessionId}/message`, {
+  // Returns a raw Response for SSE parsing — endpoint: 'stream' (SSE) | 'message' (JSON)
+  streamMessage: (sessionId: string, message: string, collectionSlugs?: string[], endpoint: 'stream' | 'message' = 'stream') =>
+    fetch(`/api/chat/sessions/${sessionId}/${endpoint}`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ message, collection_slugs: collectionSlugs }),

@@ -96,7 +96,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) http.Handler {
 		r.Get("/chat/sessions", chatH.ListSessions)
 		r.Delete("/chat/sessions/{sessionID}", chatH.DeleteSession)
 		r.Post("/chat/sessions/{sessionID}/message", chatH.Chat)
-		r.Get("/chat/sessions/{sessionID}/stream", chatH.ChatStream)
+		r.Post("/chat/sessions/{sessionID}/stream", chatH.ChatStream)
 
 		// User self-service
 		r.Post("/users/api-key", adminH.SetAPIKey)
