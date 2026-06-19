@@ -6,23 +6,23 @@ import (
 )
 
 type User struct {
-	ID           string
-	Username     string
-	PasswordHash string
-	APIKeyHash   string
-	Role         string
-	CreatedAt    time.Time
+	ID           string    `json:"id"`
+	Username     string    `json:"username"`
+	PasswordHash string    `json:"-"`
+	APIKeyHash   string    `json:"-"`
+	Role         string    `json:"role"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Collection struct {
-	ID            int64
-	Slug          string
-	DisplayName   string
-	OwnerUsername string
-	QdrantName    string
-	IsDefault     bool
-	DocumentCount int
-	CreatedAt     time.Time
+	ID            int64     `json:"id"`
+	Slug          string    `json:"slug"`
+	DisplayName   string    `json:"display_name"`
+	OwnerUsername string    `json:"owner_username"`
+	QdrantName    string    `json:"qdrant_name"`
+	IsDefault     bool      `json:"is_default"`
+	DocumentCount int       `json:"document_count"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type DocumentMeta struct {
