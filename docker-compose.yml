@@ -1,0 +1,43 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - raggo
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6334
+      DATABASE_URL: /app/data/rag.db
+    volumes:
+      - api_data:/app/data
+      - api_uploads:/app/uploads
+    depends_on:
+      - qdrant
+    networks:
+      - raggo
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - raggo
+
+networks:
+  raggo:
+
+volumes:
+  qdrant_data:
+  api_data:
+  api_uploads:

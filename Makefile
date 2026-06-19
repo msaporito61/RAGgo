@@ -1,4 +1,4 @@
-.PHONY: dev build test lint vet tidy
+.PHONY: dev build test lint vet tidy up down logs status
 
 dev:
 	go run ./cmd/server/...
@@ -24,3 +24,6 @@ down:
 
 logs:
 	docker compose logs -f api
+
+status:
+	docker compose ps
