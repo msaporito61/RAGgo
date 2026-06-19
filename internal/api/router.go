@@ -10,7 +10,11 @@ import (
 	"raggo/internal/api/handlers"
 	"raggo/internal/config"
 	"raggo/internal/middleware"
+	"raggo/internal/services/collection"
+	"raggo/internal/services/document"
+	"raggo/internal/services/embedding"
 	"raggo/internal/services/user"
+	"raggo/internal/services/vectorstore"
 )
 
 func NewRouter(cfg *config.Config, db *sql.DB) http.Handler {
@@ -31,6 +35,33 @@ func NewRouter(cfg *config.Config, db *sql.DB) http.Handler {
 	userSvc := &user.Service{DB: db, Cfg: cfg}
 	authH := &handlers.AuthHandler{UserSvc: userSvc}
 
+	// Build shared services.
+	embedSvc := embedding.New(cfg.OpenRouterBaseURL, cfg.OpenRouterAPIKey, cfg.EmbeddingModel)
+
+	// Vectorstore client is shared between the collection service and ingest service.
+	var vsClient *vectorstore.Client
+	var vsAdapter document.VectorStore
+	if vc, err := vectorstore.NewClient(cfg.QdrantHost, cfg.QdrantPort); err == nil {
+		vsClient = vc
+		vsAdapter = &document.VectorStoreAdapter{Client: vc}
+	}
+
+	collSvc := &collection.Service{DB: db, Qdrant: vsClient, VectorSize: embedSvc.VectorSize()}
+
+	ingestSvc := &document.IngestService{
+		DB:           db,
+		Embedder:     embedSvc,
+		VS:           vsAdapter,
+		ChunkSize:    500,
+		ChunkOverlap: 50,
+	}
+
+	docH := &handlers.DocumentHandler{
+		IngestSvc: ingestSvc,
+		CollSvc:   collSvc,
+		MaxUpload: 32 << 20, // 32 MB
+	}
+
 	// Public routes
 	r.Get("/health", handlers.Health(cfg))
 	r.Post("/auth/login", authH.Login)
@@ -39,7 +70,12 @@ func NewRouter(cfg *config.Config, db *sql.DB) http.Handler {
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(middleware.Authenticator(cfg, db))
-		// handlers added in later tasks
+
+		// Document routes
+		r.Post("/documents/upload", docH.Upload)
+		r.Get("/documents", docH.List)
+		r.Delete("/documents/{docID}", docH.Delete)
+		r.Post("/documents/{docID}/move", docH.Move)
 	})
 
 	return r
