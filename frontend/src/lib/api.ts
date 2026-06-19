@@ -156,3 +156,40 @@ export const health = {
     return res.json()
   },
 }
+
+// Admin
+export const admin = {
+  async listUsers() {
+    const res = await fetchWithAuth('/admin/users')
+    if (!res.ok) throw new Error('Failed to list users')
+    return res.json()
+  },
+  async createUser(username: string, password: string, role: 'admin' | 'user') {
+    const res = await fetchWithAuth('/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to create user' }))
+      throw new Error(err.error ?? 'Failed to create user')
+    }
+  },
+  async deleteUser(username: string) {
+    const res = await fetchWithAuth(`/admin/users/${username}`, { method: 'DELETE' })
+    if (!res.ok) throw new Error('Failed to delete user')
+  },
+  async setPassword(username: string, password: string) {
+    const res = await fetchWithAuth(`/admin/users/${username}/password`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    })
+    if (!res.ok) throw new Error('Failed to update password')
+  },
+  async listAllCollections() {
+    const res = await fetchWithAuth('/admin/collections')
+    if (!res.ok) throw new Error('Failed to list all collections')
+    return res.json()
+  },
+}
