@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { collections, fetchWithAuth } from '@/lib/api'
+import { collections, chat as chatApi } from '@/lib/api'
 import type { Collection, ChatMessage } from '@/types/api'
 import { Send } from 'lucide-react'
 
@@ -43,23 +43,25 @@ export function Chat() {
     setMsgs((prev) => [...prev, assistantMsg])
 
     try {
-      const res = await fetchWithAuth('/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: userMsg.content,
-          session_id: sessionId,
-          collection_slugs: selectedCols.length > 0 ? selectedCols : undefined,
-        }),
-      })
+      // Create a session on first message
+      let activeSessionId = sessionId
+      if (!activeSessionId) {
+        const sessionRes = await chatApi.createSession()
+        if (!sessionRes.ok) throw new Error(`Failed to create session: ${sessionRes.status}`)
+        const sessionData = await sessionRes.json()
+        activeSessionId = sessionData.session_id
+        setSessionId(activeSessionId)
+      }
+
+      const res = await chatApi.streamMessage(
+        activeSessionId!,
+        userMsg.content,
+        selectedCols.length > 0 ? selectedCols : undefined,
+      )
 
       if (!res.ok) {
         throw new Error(`Server error: ${res.status}`)
       }
-
-      // Extract session_id from response headers if present
-      const newSessionId = res.headers.get('X-Session-Id')
-      if (newSessionId) setSessionId(newSessionId)
 
       const reader = res.body?.getReader()
       const decoder = new TextDecoder()
@@ -91,8 +93,6 @@ export function Chat() {
                 return updated
               })
             }
-            // Capture session_id from stream payload if returned
-            if (chunk.session_id && !sessionId) setSessionId(chunk.session_id)
           } catch {
             // non-JSON line, skip
           }

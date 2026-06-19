@@ -36,28 +36,43 @@ func (h *SearchHandler) Search(w http.ResponseWriter, r *http.Request) {
 	collectionSlug := r.URL.Query().Get("collection_slug")
 	useHybrid := true
 
-	// resolve collection
-	qdrantName := ""
+	// resolve collection(s)
+	var results []search.Result
 	if collectionSlug != "" {
 		col, err := database.GetCollection(h.DB, c.Username, collectionSlug)
 		if err != nil {
 			writeJSON(w, http.StatusNotFound, errResp("collection not found"))
 			return
 		}
-		qdrantName = col.QdrantName
+		results, err = h.SearchSvc.Search(r.Context(), query, col.QdrantName, limit, useHybrid)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errResp(err.Error()))
+			return
+		}
 	} else {
-		col, err := h.CollSvc.GetOrCreateDefault(r.Context(), c.Username)
+		cols, err := database.ListCollectionsForUser(h.DB, c.Username)
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, errResp("collection error"))
 			return
 		}
-		qdrantName = col.QdrantName
-	}
-
-	results, err := h.SearchSvc.Search(r.Context(), query, qdrantName, limit, useHybrid)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, errResp(err.Error()))
-		return
+		qdrantNames := make([]string, 0, len(cols))
+		for _, col := range cols {
+			qdrantNames = append(qdrantNames, col.QdrantName)
+		}
+		if len(qdrantNames) == 0 {
+			// No collections yet — ensure default exists and search it
+			col, err := h.CollSvc.GetOrCreateDefault(r.Context(), c.Username)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, errResp("collection error"))
+				return
+			}
+			qdrantNames = []string{col.QdrantName}
+		}
+		results, err = h.SearchSvc.SearchMulti(r.Context(), query, qdrantNames, limit, useHybrid)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, errResp(err.Error()))
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"data":  results,

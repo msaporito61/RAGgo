@@ -47,7 +47,7 @@ func NewRouter(cfg *config.Config, db *sql.DB) http.Handler {
 	r.Use(chimw.Recoverer)
 	r.Use(middleware.SecurityHeaders)
 	r.Use(cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
+		AllowedOrigins:   []string{"http://localhost:3000", "http://localhost:5173"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type", "X-API-Key"},
 		AllowCredentials: true,

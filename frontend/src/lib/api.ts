@@ -99,7 +99,7 @@ export const documents = {
   async upload(file: File, collectionSlug?: string) {
     const form = new FormData()
     form.append('file', file)
-    const url = collectionSlug ? `/documents?collection_slug=${collectionSlug}` : '/documents'
+    const url = collectionSlug ? `/documents/upload?collection_slug=${collectionSlug}` : '/documents/upload'
     const res = await fetchWithAuth(url, { method: 'POST', body: form })
     if (!res.ok) throw new Error('Failed to upload document')
     return res.json()
@@ -122,11 +122,9 @@ export const documents = {
 // Search
 export const search = {
   async query(query: string, collectionSlug?: string, limit = 10, useHybrid = true) {
-    const res = await fetchWithAuth('/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, collection_slug: collectionSlug, limit, use_hybrid: useHybrid }),
-    })
+    const params = new URLSearchParams({ q: query, limit: String(limit), use_hybrid: String(useHybrid) })
+    if (collectionSlug) params.set('collection_slug', collectionSlug)
+    const res = await fetchWithAuth(`/search?${params.toString()}`)
     if (!res.ok) throw new Error('Search failed')
     return res.json()
   },
@@ -134,21 +132,21 @@ export const search = {
 
 // Chat
 export const chat = {
-  async send(message: string, sessionId?: string, collectionSlugs?: string[]) {
-    const res = await fetchWithAuth('/chat', {
+  createSession: () => fetchWithAuth('/chat/sessions', { method: 'POST', body: JSON.stringify({}) }),
+  listSessions: () => fetchWithAuth('/chat/sessions'),
+  deleteSession: (id: string) => fetchWithAuth(`/chat/sessions/${id}`, { method: 'DELETE' }),
+  sendMessage: (sessionId: string, message: string, collectionSlugs?: string[]) =>
+    fetchWithAuth(`/chat/sessions/${sessionId}/message`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, session_id: sessionId, collection_slugs: collectionSlugs }),
-    })
-    if (!res.ok) throw new Error('Chat failed')
-    return res.json()
-  },
-  streamUrl(message: string, sessionId?: string, collectionSlugs?: string[]) {
-    return {
-      url: `${BASE}/chat/stream`,
-      body: JSON.stringify({ message, session_id: sessionId, collection_slugs: collectionSlugs }),
-    }
-  },
+      body: JSON.stringify({ message, collection_slugs: collectionSlugs }),
+    }),
+  // Returns a raw Response for SSE parsing
+  streamMessage: (sessionId: string, message: string, collectionSlugs?: string[]) =>
+    fetch(`/api/chat/sessions/${sessionId}/message`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('access_token')}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, collection_slugs: collectionSlugs }),
+    }),
 }
 
 // Health
