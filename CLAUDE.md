@@ -2,131 +2,126 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What This Is
+## Qué es este proyecto
 
-RAGgo is a full rewrite of the RAG system at `/Users/msaporito/Development/RAG` (Python/FastAPI) targeting a new stack:
+RAGgo es una reescritura completa del sistema RAG en `/Users/msaporito/Development/RAG` (Python/FastAPI). La implementación está terminada y funcional. Ver `README.md` para documentación de usuario.
 
-| Layer | Technology |
+| Capa | Tecnología |
 |---|---|
-| Frontend | Vite + React + TypeScript + Tailwind CSS + Shadcn/UI + Cult-UI (cult-ui.com) |
-| Backend | Go |
-| Vector DB | Qdrant |
-| MCP Server | Go or Python (same stdio transport as the original) |
+| Frontend | Vite + React + TypeScript + Tailwind CSS + shadcn/ui |
+| Backend | Go (Chi router, JWT, modernc.org/sqlite) |
+| Base de datos vectorial | Qdrant (cliente gRPC, puerto 6334) |
+| MCP Server | Go (mark3labs/mcp-go, stdio) |
 
-The original system is the canonical reference for features and API contracts. Read its `CLAUDE.md` and `README.md` at `/Users/msaporito/Development/RAG/` before implementing any feature.
-
-## Source System Feature Set
-
-All of these must be preserved in RAGgo:
-
-- **Document ingestion**: PDF, DOCX, XLSX, MD, TXT — parse → chunk → embed → upsert into Qdrant
-- **Semantic + hybrid search** (vector + BM25 keyword rerank)
-- **Streaming RAG chat** (SSE) with conversation sessions and multi-collection context
-- **Multi-tenancy**: per-user Qdrant collections named `rag_<username>_<slug>`
-- **Collection CRUD**: create, rename, delete; default collection auto-created on first use
-- **Document operations**: upload, list (paginated, newest-first), view content, delete, move between collections
-- **Web scraping**: fetch URL → chunk → index (`/scrape`)
-- **Auth**: JWT Bearer (30 min access + 7 day refresh) and `X-API-Key` for programmatic access
-- **User management**: admin role + regular users; per-user API keys stored as bcrypt hashes
-- **MCP Server**: 22 tools over stdio — see `/Users/msaporito/Development/RAG/README.md` for the full tool list
-- **Admin endpoints**: list all collections, user CRUD, activity/audit log
-
-## Commands
-
-> Commands will be added here as the project is scaffolded.
+## Comandos
 
 ### Backend (Go)
 
 ```bash
-go build ./...          # Build all
-go test ./...           # Run all unit tests
-go test ./... -run TestName    # Run a single test
-go vet ./...            # Vet
+go build ./...                        # Compilar todo
+go test ./...                         # Todos los tests
+go test ./... -run TestNombre         # Test específico
+go vet ./...                          # Vet
+make dev                              # Servidor de desarrollo
 ```
 
 ### Frontend (Node)
 
 ```bash
-cd frontend && npm run dev          # Dev server on :3000
-cd frontend && npm run test:run     # Vitest single pass
-cd frontend && npm run build        # Type-check + production build
-cd frontend && npm run lint         # ESLint
+cd frontend && npm run dev            # Dev server en :3000
+cd frontend && npm run test:run       # Vitest single pass
+cd frontend && npm run build          # Type-check + build de producción
 ```
 
-### Infrastructure
+### Infraestructura
 
 ```bash
-docker run -d -p 6333:6333 qdrant/qdrant   # Qdrant for local dev
-docker compose up -d                        # Full stack
-docker compose logs -f api                  # API logs
+docker run -d -p 6333:6333 -p 6334:6334 qdrant/qdrant   # Qdrant local
+make up                               # Stack completo
+make down                             # Detener stack
+make logs                             # Logs del backend
+make status                           # Estado de contenedores
 ```
 
-## Architecture
+## Arquitectura
 
 ### Backend (Go)
 
-Structure the Go backend following clean layering:
-
 ```
-cmd/server/          — main entry point, wires everything
+cmd/server/              — punto de entrada, wiring de todo
+cmd/mcp/                 — binario del servidor MCP
 internal/
-  api/               — HTTP handlers (Gin or Chi), thin layer
-  services/          — business logic (chat, search, embed, collection, document)
-  vectorstore/       — Qdrant client wrapper
-  database/          — SQLite (users, collections, audit log) via sqlc or GORM
-  config/            — config struct loaded from env
-  middleware/         — JWT auth, API key auth, rate limit, SSRF guard
-  mcp/               — MCP server (stdio transport)
+  api/
+    handlers/            — manejadores HTTP (uno por dominio)
+    router.go            — registro de rutas y middlewares
+  services/
+    user/                — auth, JWT, usuarios
+    collection/          — CRUD colecciones + Qdrant lifecycle
+    document/            — loader, chunker, pipeline de ingesta
+    embedding/           — cliente HTTP OpenRouter embeddings
+    search/              — búsqueda híbrida semántica+BM25
+    chat/                — chat RAG con streaming SSE
+    vectorstore/         — cliente gRPC Qdrant
+  database/              — SQLite: schema SQL embebido, queries parametrizados
+  middleware/            — auth JWT/API-key, headers de seguridad, CORS
+  mcp/                   — 22 herramientas MCP
+  config/                — Config struct cargado desde env
 ```
 
-Key invariants from the original system:
-- All AI services (embed, search, chat) should be initialized once at startup and injected — no per-request construction.
-- Qdrant collection names: `rag_<username>_<slug>` (max 128 chars). Slugs are derived from `display_name`.
-- JWT has priority over `X-API-Key` when both are present.
-- Public routes (no auth): `/health`, `/auth/login`, `/auth/refresh`, Swagger/OpenAPI.
-- Admin user seeded from env on first startup; subsequent runs skip if user exists.
-- Document list is always sorted by `uploaded_at` DESC before pagination.
-- Multi-collection chat: when no collection is selected, search all of the user's collections; merge results by score, deduplicate by text fingerprint.
-- Chat prompt injects a document index (all user docs) separate from retrieved chunks so the LLM knows what exists.
+**Invariantes clave:**
+- Nombres de colecciones Qdrant: `rag_<usuario>_<slug>` (máx. 128 chars). Slug derivado de `display_name`.
+- JWT tiene prioridad sobre `X-API-Key` cuando ambos están presentes.
+- Rutas públicas (sin auth): `/health`, `/auth/login`, `/auth/refresh`.
+- Usuario admin creado desde `.env` al primer arranque; siguientes arranques no hacen nada si ya existe.
+- Listado de documentos siempre ordenado por `uploaded_at DESC, rowid DESC`.
+- Sin colección seleccionada → buscar en todas las colecciones del usuario; fusionar por score, deduplicar por huella de texto.
+- Prompt de chat inyecta índice de documentos + chunks recuperados como contexto del sistema.
 
 ### Frontend (React + Vite + TypeScript)
 
 ```
 frontend/src/
-  lib/api.ts          — single API client, all fetch calls, JWT injection, auto-refresh on 401
-  types/api.ts        — TypeScript interfaces matching backend response shapes
-  hooks/useAuth.tsx   — AuthContext
-  components/         — Shadcn/UI + Cult-UI components
-  pages/              — Dashboard, Documents, Search, Chat, Collections, Settings, Login, Help, QdrantDashboard
-  routes/index.tsx    — React Router + ProtectedRoute
+  lib/api.ts          — cliente API único, inyección JWT, auto-refresh en 401
+  types/api.ts        — interfaces TypeScript que reflejan respuestas del backend
+  hooks/useAuth.tsx   — AuthContext (user, isAdmin, login, logout)
+  components/         — componentes shadcn/ui + ProtectedRoute + AdminRoute
+  pages/              — Dashboard, Documents, Search, Chat, Collections, Settings, Login, Admin, Help
+  routes/index.tsx    — React Router con rutas protegidas
 ```
 
-Use Shadcn/UI for standard components. Use Cult-UI for visual flourish/animation where appropriate.
+Todas las llamadas API van por `fetchWithAuth()` que reintenta con token renovado en 401.
 
-All API calls route through `fetchWithAuth()` which auto-retries with a refreshed token on 401.
+### Servidor MCP
 
-### MCP Server
+Binario en `cmd/mcp/`. 22 herramientas sobre stdio. Autenticación vía `RAGGO_API_KEY`. URL del backend vía `RAGGO_BASE_URL` (default: `http://localhost:8080`).
 
-Expose the same 22 tools as the original (`mcp_server.py`). Authenticate via `RAG_API_KEY` env var. Transport: stdio. Can be a separate binary (`cmd/mcp/`) or a subcommand of the main server.
-
-## Key Configuration (.env)
+## Configuración (.env)
 
 ```env
-OPENROUTER_API_KEY=         # LLM provider (OpenRouter)
-SECURITY_SECRET_KEY=        # JWT signing secret
-SECURITY_ADMIN_USERNAME=admin
-SECURITY_ADMIN_PASSWORD=
-SECURITY_API_KEY=           # Global programmatic access key
+PORT=8080
+ENVIRONMENT=development
+
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=openai/gpt-4o-mini
+EMBEDDING_MODEL=text-embedding-3-small
+
 QDRANT_HOST=localhost
-QDRANT_PORT=6333
+QDRANT_PORT=6334
+
 DATABASE_URL=./data/rag.db
-ENVIRONMENT=development     # or production
-PORT=8000
+
+SECURITY_SECRET_KEY=secreto-aleatorio-32-chars
+SECURITY_ADMIN_USERNAME=admin
+SECURITY_ADMIN_PASSWORD=password-admin
+SECURITY_API_KEY=clave-api-global
+SECURITY_RATE_LIMIT_PER_MINUTE=60
 ```
 
-## Testing
+## Tests
 
-- All business logic must have unit tests that pass before any manual testing.
-- Mock Qdrant and OpenRouter in unit tests (same pattern as the original `tests/conftest.py`).
-- Frontend tests use Vitest + jsdom.
-- Run backend tests with `go test ./...` and frontend tests with `npm run test:run`.
+- Todo el código de negocio tiene tests unitarios en `*_test.go`.
+- Tests de Go usan `:memory:` SQLite y stubs HTTP para Qdrant/OpenRouter (sin llamadas reales).
+- Tests de frontend usan Vitest + jsdom + Testing Library.
+- Correr `go test ./...` antes de cualquier prueba manual.
+- El test `TestScraper_BlocksPrivateIP` verifica protección SSRF con subtests de IPs privadas y loopback.
