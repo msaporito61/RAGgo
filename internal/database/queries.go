@@ -76,7 +76,7 @@ func GetUserByID(db *sql.DB, id string) (*User, error) {
 }
 
 func ListUsers(db *sql.DB) ([]User, error) {
-	rows, err := db.Query(`SELECT id, username, role, created_at FROM users ORDER BY created_at`)
+	rows, err := db.Query(`SELECT id, username, api_key_hash, role, created_at FROM users ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -84,9 +84,11 @@ func ListUsers(db *sql.DB) ([]User, error) {
 	var users []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &u.CreatedAt); err != nil {
+		var apiKey sql.NullString
+		if err := rows.Scan(&u.ID, &u.Username, &apiKey, &u.Role, &u.CreatedAt); err != nil {
 			return nil, err
 		}
+		u.APIKeyHash = apiKey.String
 		users = append(users, u)
 	}
 	return users, rows.Err()
