@@ -70,6 +70,60 @@ func (s *Service) Search(ctx context.Context, query, qdrantName string, limit in
 	return results, nil
 }
 
+// SearchMulti searches across multiple Qdrant collections and merges results by score,
+// deduplicating by text content hash.
+func (s *Service) SearchMulti(ctx context.Context, query string, qdrantNames []string, limit int, useHybrid bool) ([]Result, error) {
+	vecs, err := s.Embedder.Embed(ctx, []string{query})
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool) // text fingerprint → dedup
+	var allResults []Result
+
+	for _, name := range qdrantNames {
+		raw, err := s.VS.Search(ctx, name, vecs[0], uint64(limit*2), nil)
+		if err != nil {
+			continue
+		}
+		for _, r := range raw {
+			text := r.Payload["text"]
+			fp := fingerprint(text)
+			if seen[fp] {
+				continue
+			}
+			seen[fp] = true
+			semScore := r.Score
+			kwScore := float32(0)
+			if useHybrid {
+				kwScore = bm25Score(query, text)
+			}
+			combined := float32(semanticWeight)*semScore + float32(keywordWeight)*kwScore
+			allResults = append(allResults, Result{
+				ID:            r.ID,
+				Text:          text,
+				Score:         combined,
+				SemanticScore: semScore,
+				KeywordScore:  kwScore,
+				Payload:       r.Payload,
+			})
+		}
+	}
+
+	sort.Slice(allResults, func(i, j int) bool { return allResults[i].Score > allResults[j].Score })
+	if len(allResults) > limit {
+		allResults = allResults[:limit]
+	}
+	return allResults, nil
+}
+
+func fingerprint(text string) string {
+	if len(text) > 64 {
+		return text[:64]
+	}
+	return text
+}
+
 // bm25Score computes a simplified BM25-like term frequency score (no IDF, suitable for single-doc scoring).
 func bm25Score(query, text string) float32 {
 	const k1 = 1.5

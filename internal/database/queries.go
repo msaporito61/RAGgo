@@ -271,3 +271,89 @@ func InsertAuditLog(db *sql.DB, username, event, ip string) error {
 	_, err := db.Exec(`INSERT INTO audit_log (username, event, ip) VALUES (?,?,?)`, username, event, ip)
 	return err
 }
+
+// Chat sessions and messages
+
+type ChatSession struct {
+	ID        string
+	Username  string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type ChatMessage struct {
+	ID        int64
+	SessionID string
+	Role      string
+	Content   string
+	CreatedAt time.Time
+}
+
+func CreateChatSession(db *sql.DB, id, username string) error {
+	_, err := db.Exec(`INSERT INTO chat_sessions (id, username) VALUES (?,?)`, id, username)
+	return err
+}
+
+func GetChatSession(db *sql.DB, id string) (*ChatSession, error) {
+	s := &ChatSession{}
+	err := db.QueryRow(
+		`SELECT id, username, created_at, updated_at FROM chat_sessions WHERE id = ?`, id,
+	).Scan(&s.ID, &s.Username, &s.CreatedAt, &s.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func ListChatSessionsForUser(db *sql.DB, username string) ([]ChatSession, error) {
+	rows, err := db.Query(
+		`SELECT id, username, created_at, updated_at FROM chat_sessions WHERE username = ? ORDER BY updated_at DESC`,
+		username,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sessions []ChatSession
+	for rows.Next() {
+		s := ChatSession{}
+		if err := rows.Scan(&s.ID, &s.Username, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, s)
+	}
+	return sessions, rows.Err()
+}
+
+func DeleteChatSession(db *sql.DB, id string) error {
+	_, err := db.Exec(`DELETE FROM chat_sessions WHERE id = ?`, id)
+	return err
+}
+
+func AppendChatMessage(db *sql.DB, sessionID, role, content string) error {
+	_, err := db.Exec(`INSERT INTO chat_messages (session_id, role, content) VALUES (?,?,?)`, sessionID, role, content)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?`, sessionID)
+	return err
+}
+
+func GetSessionMessages(db *sql.DB, sessionID string, limit int) ([]ChatMessage, error) {
+	rows, err := db.Query(
+		`SELECT id, session_id, role, content, created_at FROM chat_messages
+		 WHERE session_id = ? ORDER BY created_at LIMIT ?`, sessionID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var msgs []ChatMessage
+	for rows.Next() {
+		m := ChatMessage{}
+		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
